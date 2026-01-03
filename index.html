@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>氣功道場清潔應用</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { createRoot } = ReactDOM;
+
+        // GitHub Pages URL - あなたのGitHubユーザー名とリポジトリ名に変更してください
+        const GITHUB_API = 'https://api.github.com/repos/YOUR_USERNAME/cleaning-app/contents/data.json';
+        const GITHUB_TOKEN = 'YOUR_GITHUB_TOKEN'; // Personal Access Tokenを設定
+
+        const CleaningApp = () => {
+            const [currentView, setCurrentView] = useState('home');
+            const [selectedArea, setSelectedArea] = useState(null);
+            const [userName, setUserName] = useState('');
+            const [showNameInput, setShowNameInput] = useState(true);
+            const [sharedData, setSharedData] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [showNotes, setShowNotes] = useState(false);
+            const [noteText, setNoteText] = useState('');
+            const [taskNotes, setTaskNotes] = useState({});
+            const [editingNoteFor, setEditingNoteFor] = useState(null);
+            const [currentNoteText, setCurrentNoteText] = useState('');
+            const [storageError, setStorageError] = useState(false);
+            const [dataSha, setDataSha] = useState('');
+
+            const cleaningAreas = {
+                '2樓教室': [
+                    { id: 1, name: '鏡子', people: 2, tools: '玻璃清潔劑/布', benefit: '臉部/頭部' },
+                    { id: 2, name: '窗玻璃', people: 2, tools: '玻璃刮刀/長柄刷', benefit: '眼睛/呼吸系統' },
+                    { id: 3, name: '地板', people: 4, tools: '拖把/掃把', benefit: '腿部/腳部' },
+                    { id: 4, name: '鞋櫃', people: 1, tools: '抹布', benefit: '消化系統/脾胃' },
+                    { id: 5, name: '洗手間', people: 2, tools: '刷子/清潔劑/抹布', benefit: '腎臟/泌尿系統' }
+                ],
+                '2樓公共空間': [
+                    { id: 6, name: '更衣室', people: 1, tools: '掃把/拖把/抹布', benefit: '心臟/血液循環' },
+                    { id: 7, name: '喝茶空間', people: 1, tools: '掃把/拖把/抹布/刷子/清潔劑', benefit: '肝臟/筋骨' },
+                    { id: 8, name: '洗手間', people: 1, tools: '刷子/清潔劑/抹布', benefit: '喉嚨/口腔' },
+                    { id: 9, name: '舊商品區域', people: 1, tools: '掃把/拖把/抹布', benefit: '儲蓄/財庫' }
+                ],
+                '1樓公共空間': [
+                    { id: 10, name: '大家的餐區', people: 1, tools: '掃把/拖把/抹布', benefit: '財運/事業' },
+                    { id: 11, name: '新商品區', people: 1, tools: '抹布', benefit: '脾胃/腸胃' },
+                    { id: 12, name: '流理台', people: 1, tools: '菜瓜布/去油劑', benefit: '創造力/名聲' },
+                    { id: 13, name: '洗手間', people: 1, tools: '刷子/清潔劑/抹布', benefit: '財富/聚寶' },
+                    { id: 14, name: '馬的木雕裝飾', people: '3~4', tools: '軟刷/保養油', benefit: '成功/行動力' }
+                ]
+            };
+
+            useEffect(() => {
+                loadSharedData();
+                const interval = setInterval(loadSharedData, 5000);
+                return () => clearInterval(interval);
+            }, []);
+
+            const loadSharedData = async () => {
+                try {
+                    // LocalStorageを使用（シンプル版）
+                    const stored = localStorage.getItem('cleaning-data');
+                    if (stored) {
+                        const data = JSON.parse(stored);
+                        setSharedData(data);
+                        setNoteText(data.notes || '');
+                        setTaskNotes(data.taskNotes || {});
+                    } else {
+                        const initialData = {
+                            tasks: {},
+                            activeUsers: {},
+                            notes: '',
+                            taskNotes: {}
+                        };
+                        setSharedData(initialData);
+                    }
+                    setLoading(false);
+                } catch (error) {
+                    console.error('載入錯誤:', error);
+                    setStorageError(true);
+                    const initialData = {
+                        tasks: {},
+                        activeUsers: {},
+                        notes: '',
+                        taskNotes: {}
+                    };
+                    setSharedData(initialData);
+                    setLoading(false);
+                }
+            };
+
+            const saveSharedData = async (newData) => {
+                try {
+                    localStorage.setItem('cleaning-data', JSON.stringify(newData));
+                    setSharedData(newData);
+                } catch (error) {
+                    console.error('儲存失敗:', error);
+                    setStorageError(true);
+                }
+            };
+
+            const handleNameSubmit = async () => {
+                if (userName.trim()) {
+                    setShowNameInput(false);
+                    const updatedData = {
+                        ...sharedData,
+                        activeUsers: {
+                            ...sharedData.activeUsers,
+                            [userName]: Date.now()
+                        }
+                    };
+                    await saveSharedData(updatedData);
+                }
+            };
+
+            const handleTaskComplete = async (areaName, taskId) => {
+                const key = `${areaName}-${taskId}`;
+                const currentTask = sharedData.tasks[key];
+                
+                let updatedTask;
+                if (currentTask && currentTask.completed) {
+                    updatedTask = null;
+                } else {
+                    updatedTask = {
+                        completed: true,
+                        completedBy: userName,
+                        completedAt: Date.now()
+                    };
+                }
+
+                const updatedTasks = { ...sharedData.tasks };
+                if (updatedTask) {
+                    updatedTasks[key] = updatedTask;
+                } else {
+                    delete updatedTasks[key];
+                }
+
+                const updatedData = {
+                    ...sharedData,
+                    tasks: updatedTasks
+                };
+                
+                await saveSharedData(updatedData);
+            };
+
+            const handleSaveNote = async () => {
+                const updatedData = {
+                    ...sharedData,
+                    notes: noteText
+                };
+                await saveSharedData(updatedData);
+                setShowNotes(false);
+            };
+
+            const handleSaveTaskNote = async (areaName, taskId) => {
+                const key = `${areaName}-${taskId}`;
+                const updatedTaskNotes = {
+                    ...taskNotes,
+                    [key]: {
+                        text: currentNoteText,
+                        updatedBy: userName,
+                        updatedAt: Date.now()
+                    }
+                };
+                
+                const updatedData = {
+                    ...sharedData,
+                    taskNotes: updatedTaskNotes
+                };
+                
+                await saveSharedData(updatedData);
+                setTaskNotes(updatedTaskNotes);
+                setEditingNoteFor(null);
+                setCurrentNoteText('');
+            };
+
+            const openTaskNote = (areaName, taskId) => {
+                const key = `${areaName}-${taskId}`;
+                const existingNote = taskNotes[key];
+                setEditingNoteFor(key);
+                setCurrentNoteText(existingNote?.text || '');
+            };
+
+            const getTaskNote = (areaName, taskId) => {
+                const key = `${areaName}-${taskId}`;
+                return taskNotes[key] || null;
+            };
+
+            const getActiveUsers = () => {
+                if (!sharedData || !sharedData.activeUsers) return [];
+                const now = Date.now();
+                const activeThreshold = 5 * 60 * 1000;
+                return Object.entries(sharedData.activeUsers)
+                    .filter(([name, timestamp]) => now - timestamp < activeThreshold)
+                    .map(([name]) => name);
+            };
+
+            const getTotalCompleted = () => {
+                if (!sharedData || !sharedData.tasks) return 0;
+                return Object.keys(sharedData.tasks).length;
+            };
+
+            const getTotalTasks = () => {
+                return Object.values(cleaningAreas).reduce((sum, tasks) => sum + tasks.length, 0);
+            };
+
+            const getCompletionPercentage = () => {
+                const total = getTotalTasks();
+                const completed = getTotalCompleted();
+                return Math.round((completed / total) * 100);
+            };
+
+            const isTaskCompleted = (areaName, taskId) => {
+                if (!sharedData || !sharedData.tasks) return false;
+                const key = `${areaName}-${taskId}`;
+                return sharedData.tasks[key]?.completed || false;
+            };
+
+            const getTaskCompletedBy = (areaName, taskId) => {
+                if (!sharedData || !sharedData.tasks) return null;
+                const key = `${areaName}-${taskId}`;
+                return sharedData.tasks[key]?.completedBy || null;
+            };
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-50 to-blue-100 flex items-center justify-center p-4">
+                        <div className="text-center">
+                            <div className="w-16 h-16 mx-auto mb-4 animate-spin">✨</div>
+                            <p className="text-xl text-gray-700">載入中...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (showNameInput) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-50 to-blue-100 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full">
+                            <div className="text-center mb-6">
+                                <div className="text-6xl mb-4">✨</div>
+                                <h1 className="text-3xl font-bold text-gray-800 mb-2">氣功道場清潔</h1>
+                                <p className="text-gray-600">一起打掃，增進健康</p>
+                                
+                                {storageError && (
+                                    <div className="mt-4 p-3 bg-yellow-100 border border-yellow-400 rounded-lg text-sm text-yellow-800">
+                                        ⚠️ 注意：目前使用本地儲存模式
+                                    </div>
+                                )}
+                            </div>
+                            <div className="space-y-4">
+                                <input
+                                    type="text"
+                                    placeholder="請輸入您的名字"
+                                    value={userName}
+                                    onChange={(e) => setUserName(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleNameSubmit()}
+                                    className="w-full px-4 py-3 text-lg border-2 border-purple-300 rounded-xl focus:border-purple-500 focus:outline-none"
+                                />
+                                <button
+                                    onClick={handleNameSubmit}
+                                    className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-xl text-lg font-semibold hover:shadow-lg transition-all"
+                                >
+                                    開始打掃
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            const activeUsers = getActiveUsers();
+            const completionPercentage = getCompletionPercentage();
+            const totalTasks = getTotalTasks();
+            const completedTasks = getTotalCompleted();
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-50 to-blue-100 p-4">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="bg-white rounded-3xl shadow-xl p-6 mb-6">
+                            {storageError && (
+                                <div className="mb-4 p-3 bg-yellow-100 border border-yellow-400 rounded-lg text-sm text-yellow-800">
+                                    ⚠️ 本地儲存模式：資料只保存在您的裝置上
+                                </div>
+                            )}
+                            
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <h1 className="text-2xl font-bold text-gray-800">您好，{userName}！</h1>
+                                    <p className="text-gray-600">今天一起來打掃吧</p>
+                                </div>
+                                <div className="text-center">
+                                    <div className="relative w-20 h-20">
+                                        <svg className="w-20 h-20 transform -rotate-90">
+                                            <circle cx="40" cy="40" r="34" stroke="#E5E7EB" strokeWidth="8" fill="none" />
+                                            <circle 
+                                                cx="40" cy="40" r="34" 
+                                                stroke="#10B981" strokeWidth="8" fill="none"
+                                                strokeDasharray={`${2 * Math.PI * 34}`}
+                                                strokeDashoffset={`${2 * Math.PI * 34 * (1 - completionPercentage / 100)}`}
+                                                style={{transition: 'stroke-dashoffset 0.5s'}}
+                                            />
+                                        </svg>
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <span className="text-2xl font-bold text-green-600">{completionPercentage}%</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-gray-600 mt-2">{completedTasks}/{totalTasks} 完成</p>
+                                </div>
+                            </div>
+
+                            {activeUsers.length > 0 && (
+                                <div className="mt-4 p-4 bg-blue-50 rounded-xl">
+                                    <div className="flex items-center space-x-2 mb-2">
+                                        <span className="text-blue-600">👁️</span>
+                                        <h3 className="font-semibold text-blue-900">正在打掃的夥伴</h3>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {activeUsers.map((user, index) => (
+                                            <span
+                                                key={index}
+                                                className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                                    user === userName ? 'bg-purple-500 text-white' : 'bg-blue-200 text-blue-900'
+                                                }`}
+                                            >
+                                                {user} {user === userName && '(您)'}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <button
+                                onClick={() => setShowNotes(!showNotes)}
+                                className="mt-4 w-full bg-gradient-to-r from-orange-400 to-yellow-400 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
+                            >
+                                📝 引繼筆記 {sharedData?.notes && '(有內容)'}
+                            </button>
+
+                            {showNotes && (
+                                <div className="mt-4 p-4 bg-yellow-50 rounded-xl border-2 border-yellow-300">
+                                    <h3 className="font-bold text-yellow-900 mb-2">給下次打掃夥伴的筆記</h3>
+                                    <textarea
+                                        value={noteText}
+                                        onChange={(e) => setNoteText(e.target.value)}
+                                        placeholder="例如：窗玻璃需要特別注意右側，洗手間清潔劑已用完..."
+                                        className="w-full p-3 border-2 border-yellow-300 rounded-lg text-base h-32 focus:border-yellow-500 focus:outline-none"
+                                    />
+                                    <div className="flex gap-2 mt-3">
+                                        <button
+                                            onClick={handleSaveNote}
+                                            className="flex-1 bg-yellow-500 text-white py-2 rounded-lg font-semibold hover:bg-yellow-600 transition-all"
+                                        >
+                                            儲存筆記
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setNoteText(sharedData?.notes || '');
+                                                setShowNotes(false);
+                                            }}
+                                            className="flex-1 bg-gray-300 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-400 transition-all"
+                                        >
+                                            取消
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="space-y-4">
+                            {Object.entries(cleaningAreas).map(([areaName, tasks]) => {
+                                const completed = tasks.filter(task => isTaskCompleted(areaName, task.id)).length;
+                                return (
+                                    <div key={areaName} className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                                        <button
+                                            onClick={() => setSelectedArea(selectedArea === areaName ? null : areaName)}
+                                            className="w-full p-5 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                                        >
+                                            <div className="flex items-center space-x-3">
+                                                <span className="text-2xl">❤️</span>
+                                                <div className="text-left">
+                                                    <h2 className="text-xl font-bold text-gray-800">{areaName}</h2>
+                                                    <p className="text-sm text-gray-500">{completed}/{tasks.length} 完成</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-3xl text-gray-400">
+                                                {selectedArea === areaName ? '−' : '+'}
+                                            </div>
+                                        </button>
+                                        
+                                        {selectedArea === areaName && (
+                                            <div className="p-4 bg-gray-50 space-y-3">
+                                                {tasks.map(task => {
+                                                    const isCompleted = isTaskCompleted(areaName, task.id);
+                                                    const completedBy = getTaskCompletedBy(areaName, task.id);
+                                                    const taskNote = getTaskNote(areaName, task.id);
+                                                    const taskKey = `${areaName}-${task.id}`;
+                                                    const isEditingNote = editingNoteFor === taskKey;
+                                                    
+                                                    return (
+                                                        <div
+                                                            key={task.id}
+                                                            className={`bg-white rounded-xl p-4 border-2 transition-all ${
+                                                                isCompleted ? 'border-green-400 bg-green-50' : 'border-gray-200'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-start justify-between mb-3">
+                                                                <div className="flex-1">
+                                                                    <h3 className="text-lg font-bold text-gray-800 mb-1">{task.name}</h3>
+                                                                    <div className="space-y-1 text-sm">
+                                                                        <p className="text-gray-600">
+                                                                            👥 需要 {task.people} 人
+                                                                        </p>
+                                                                        <p className="text-gray-600">🧹 {task.tools}</p>
+                                                                        <p className="text-purple-600 font-semibold">
+                                                                            ✨ 對應：{task.benefit}
+                                                                        </p>
+                                                                        {isCompleted && completedBy && (
+                                                                            <p className="text-green-600 font-semibold mt-2">
+                                                                                ✓ {completedBy} 已完成
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {taskNote && !isEditingNote && (
+                                                                <div className="mb-3 p-3 bg-yellow-50 border border-yellow-300 rounded-lg">
+                                                                    <div className="flex items-start justify-between mb-1">
+                                                                        <p className="text-xs text-yellow-700 font-semibold">📝 引繼筆記</p>
+                                                                        <button
+                                                                            onClick={() => openTaskNote(areaName, task.id)}
+                                                                            className="text-xs text-yellow-700 hover:text-yellow-900"
+                                                                        >
+                                                                            編輯
+                                                                        </button>
+                                                                    </div>
+                                                                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{taskNote.text}</p>
+                                                                    <p className="text-xs text-gray-500 mt-1">
+                                                                        {taskNote.updatedBy} 留言
+                                                                    </p>
+                                                                </div>
+                                                            )}
+
+                                                            {isEditingNote && (
+                                                                <div className="mb-3 p-3 bg-yellow-50 border-2 border-yellow-400 rounded-lg">
+                                                                    <p className="text-xs text-yellow-700 font-semibold mb-2">📝 編輯引繼筆記</p>
+                                                                    <textarea
+                                                                        value={currentNoteText}
+                                                                        onChange={(e) => setCurrentNoteText(e.target.value)}
+                                                                        placeholder="例如：右側玻璃特別髒，需要多擦幾次..."
+                                                                        className="w-full p-2 border border-yellow-300 rounded text-sm h-20 focus:border-yellow-500 focus:outline-none"
+                                                                    />
+                                                                    <div className="flex gap-2 mt-2">
+                                                                        <button
+                                                                            onClick={() => handleSaveTaskNote(areaName, task.id)}
+                                                                            className="flex-1 bg-yellow-500 text-white py-1 px-2 rounded text-sm font-semibold hover:bg-yellow-600"
+                                                                        >
+                                                                            儲存
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setEditingNoteFor(null);
+                                                                                setCurrentNoteText('');
+                                                                            }}
+                                                                            className="flex-1 bg-gray-300 text-gray-700 py-1 px-2 rounded text-sm font-semibold hover:bg-gray-400"
+                                                                        >
+                                                                            取消
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            <div className="flex gap-2">
+                                                                <button
+                                                                    onClick={() => handleTaskComplete(areaName, task.id)}
+                                                                    className={`flex-1 py-2 rounded-lg font-semibold transition-all ${
+                                                                        isCompleted
+                                                                            ? 'bg-green-500 text-white'
+                                                                            : 'bg-purple-500 text-white hover:bg-purple-600'
+                                                                    }`}
+                                                                >
+                                                                    {isCompleted ? '✓ 已完成' : '標記完成'}
+                                                                </button>
+                                                                {!isEditingNote && (
+                                                                    <button
+                                                                        onClick={() => openTaskNote(areaName, task.id)}
+                                                                        className="px-4 py-2 bg-yellow-400 text-yellow-900 rounded-lg font-semibold hover:bg-yellow-500 transition-all"
+                                                                    >
+                                                                        📝
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="mt-6 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl p-6 text-white text-center">
+                            <div className="text-5xl mb-3">✨</div>
+                            <h3 className="text-xl font-bold mb-2">清潔帶來健康與好運</h3>
+                            <p className="text-purple-100">每個區域都對應不同的身體部位和運勢</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = createRoot(document.getElementById('app'));
+        root.render(<CleaningApp />);
+    </script>
+</body>
+</html>
